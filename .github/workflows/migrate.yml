@@ -1,0 +1,109 @@
+name: Migrate
+
+# Merge na develop -> migrate-staging; merge na main -> migrate-production.
+# Os dois environments exigem aprovacao: o job pausa ANTES de rodar qualquer passo e,
+# se voce rejeitar (Review deployments -> Reject) ou cancelar a run, nada toca o banco.
+# O DbUp so aplica scripts ainda nao registrados; rodar sem scripts novos nao muda nada.
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrate-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Build e testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build FinFlow.Db.slnx -c Release -warnaserror
+
+      # Testcontainers usa o Docker ja presente no runner.
+      - name: Test
+        run: dotnet test --solution FinFlow.Db.slnx -c Release --no-build
+
+      - name: Scripts novos no resumo da run
+        run: |
+          {
+            echo "### Scripts de migration neste push"
+            echo
+            git diff --name-status "${{ github.event.before }}" "${{ github.sha }}" -- src/FinFlow.Db.Migrator/Scripts 2>/dev/null || echo "(sem diff disponivel)"
+          } >> "$GITHUB_STEP_SUMMARY"
+        continue-on-error: true
+
+  migrate-staging:
+    name: Migrate staging
+    if: github.ref == 'refs/heads/develop'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: staging # aprovacao obrigatoria
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+
+      - name: Aplicar migrations
+        env:
+          ConnectionStrings__Default: ${{ secrets.ConnectionStrings__Default }}
+        run: dotnet run --project src/FinFlow.Db.Migrator -c Release
+
+  migrate-production:
+    name: Migrate production
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production # aprovacao obrigatoria
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+
+      - name: Aplicar migrations
+        env:
+          ConnectionStrings__Default: ${{ secrets.ConnectionStrings__Default }}
+        run: dotnet run --project src/FinFlow.Db.Migrator -c Release
+
+  github-release:
+    name: GitHub Release
+    needs: migrate-production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      # A tag vX.Y.Z e criada pelo workflow Release na branch de release e chega a main pelo merge do PR.
+      # Este job so publica o GitHub Release dessa tag, com as notas do changelog.
+      - name: Publicar o GitHub Release da ultima tag
+        run: |
+          tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -z "$tag" ]; then
+            echo "Nenhuma tag de versao; nada a publicar."
+            exit 0
+          fi
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "O release $tag ja esta publicado."
+            exit 0
+          fi
+          git diff "$tag^" "$tag" -U0 -- CHANGELOG.md | grep '^+' | grep -v '^+++' | sed 's/^+//' > "$RUNNER_TEMP/notes.md"
+          gh release create "$tag" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag

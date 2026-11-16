@@ -1,0 +1,45 @@
+name: CI
+
+# Builda e roda os testes assim que o PR e criado (e a cada push nele). Nao toca em banco real:
+# os testes usam um Postgres 18 proprio, via Testcontainers, no Docker do runner.
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build e testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore FinFlow.Db.slnx
+
+      - name: Build
+        run: dotnet build FinFlow.Db.slnx -c Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test --solution FinFlow.Db.slnx -c Release --no-build
+
+  docker-build:
+    name: Build da imagem do migrator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build (sem push)
+        run: docker build -t finflow-db-migrator:ci .
