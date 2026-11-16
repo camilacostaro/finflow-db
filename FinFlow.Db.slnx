@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FinFlow.Db.Migrator/FinFlow.Db.Migrator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FinFlow.Db.Migrator.IntegrationTests/FinFlow.Db.Migrator.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
