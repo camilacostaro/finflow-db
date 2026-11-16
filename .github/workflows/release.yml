@@ -1,0 +1,76 @@
+name: Release
+
+# Pede a versao, cria release/vX.Y.Z a partir da develop, atualiza o CHANGELOG.md a partir dos
+# Conventional Commits, cria a tag vX.Y.Z e abre o PR release/vX.Y.Z -> main.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versao da release (X.Y.Z, sem o 'v'). Ex.: 1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-pr:
+    name: Changelog, tag e PR para a main
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      # Commits/PRs criados com GITHUB_TOKEN nao disparam outros workflows. Para rodar CI no PR de
+      # release, crie um PAT com escopo repo e salve como secret RELEASE_TOKEN (opcional).
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Validar versao
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Versao invalida '$VERSION': use X.Y.Z (ex.: 1.2.0)." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: develop
+          fetch-depth: 0 # historico e tags completos: o changelog parte da ultima tag
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Verificar PR aberto e tag existente
+        run: |
+          existing=$(gh pr list --base main --head "release/v$VERSION" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Ja existe o PR #$existing de release/v$VERSION para a main." >&2
+            exit 1
+          fi
+          if git rev-parse "v$VERSION" > /dev/null 2>&1; then
+            echo "A tag v$VERSION ja existe." >&2
+            exit 1
+          fi
+
+      - name: Atualizar CHANGELOG, commitar e criar a tag na branch de release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "release/v$VERSION"
+          npx --yes commit-and-tag-version@12 --release-as "$VERSION"
+          # Notas da release = linhas adicionadas ao CHANGELOG.md pelo commit de release.
+          git diff HEAD~1 HEAD -U0 -- CHANGELOG.md | grep '^+' | grep -v '^+++' | sed 's/^+//' > "$RUNNER_TEMP/notes.md"
+
+      - name: Empurrar a branch de release e a tag
+        run: git push --follow-tags origin "release/v$VERSION"
+
+      - name: Abrir PR release -> main
+        run: |
+          gh pr create --base main --head "release/v$VERSION" \
+            --title "release: v$VERSION" \
+            --body-file "$RUNNER_TEMP/notes.md"

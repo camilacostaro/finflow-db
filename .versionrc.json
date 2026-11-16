@@ -1,0 +1,18 @@
+{
+  "tagPrefix": "v",
+  "releaseCommitMessageFormat": "chore(release): v{{currentTag}}",
+  "header": "# Changelog\n\nAll notable changes to this project are documented in this file.\n\nGenerated automatically by the **Release** workflow from commit messages\n([Conventional Commits](https://www.conventionalcommits.org/)).\nThis project adheres to [Semantic Versioning](https://semver.org/).\n",
+  "types": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactoring" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "ci", "section": "CI/CD" },
+    { "type": "build", "section": "Build" },
+    { "type": "test", "section": "Tests" },
+    { "type": "chore", "section": "Chores" },
+    { "type": "style", "hidden": true },
+    { "type": "revert", "section": "Reverts" }
+  ]
+}
