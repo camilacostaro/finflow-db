@@ -1,0 +1,42 @@
+name: sync_develop_with_main
+
+# Assim que ha merge na main, abre o PR main -> develop para equalizar as branches
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: sync_develop_with_main
+  cancel-in-progress: false
+
+jobs:
+  open-pr:
+    name: Abrir PR main -> develop
+    runs-on: ubuntu-latest
+    env:
+      # Com GITHUB_TOKEN o PR abre normalmente, mas nao dispara CI nele. Se um dia houver checks
+      # obrigatorios em PR, salve um PAT como secret RELEASE_TOKEN (opcional).
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Abrir PR
+        run: |
+          if git merge-base --is-ancestor origin/main origin/develop; then
+            echo "A develop ja contem a main."
+            exit 0
+          fi
+          existing=$(gh pr list --base develop --head main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "O PR #$existing ja esta aberto."
+            exit 0
+          fi
+          gh pr create --base develop --head main \
+            --title "chore: sync develop with main" \
+            --body "Equaliza a develop com a main."

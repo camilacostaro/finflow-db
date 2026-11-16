@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+tests/
+.env
+.env.*
+*.md
+.vs/
+.vscode/
+.idea/
+TestResults/
+docker-compose.yml

@@ -17,7 +17,7 @@ Sobe o Postgres (`finflow_local`) e roda o migrator uma vez. A API aponta para e
 dotnet test
 ```
 
-Exige Docker. Aplicam as migrations em um Postgres 18 real e provam o isolamento entre workspaces (RLS) com um dono não superusuário.
+Exige Docker. Aplicam as migrations em um Postgres 18 real e verificam constraints, chaves estrangeiras e idempotência.
 
 ## Nova migration
 
